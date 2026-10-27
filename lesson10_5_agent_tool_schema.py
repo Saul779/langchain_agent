@@ -80,6 +80,29 @@ def get_refund_status(order_id: str) -> dict:
         {"error": "未找到退款记录"},
     )
 
+@tool
+def get_latest_order(user_id: str) -> dict:
+    """查询指定用户最近一笔订单，返回订单号和订单状态。"""
+    latest_orders = {
+        "USER001": {
+            "order_id": "ORDER001",
+            "status": "已支付",
+        },
+        "USER002": {
+            "order_id": "ORDER002",
+            "status": "待支付",
+        },
+    }
+
+    return latest_orders.get(
+        user_id,
+        {"error": "未找到该用户的订单"},
+    )
+
+@tool
+def get_latest_order_for_test(user_id: str) -> dict:
+    """测试专用：查询用户最近订单。"""
+    return {"error": "未找到该用户的订单"}
 
 # 4. 初始化模型
 model = ChatOpenAI(
@@ -90,39 +113,81 @@ model = ChatOpenAI(
 )
 
 
-# 5. 创建 Agent
+# 5. 创建 Agent  并行调用工具
+# agent = create_agent(
+#     model=model,
+#     tools=[get_order,
+#         get_logistics,
+#         get_refund_status,
+#            ],
+#     system_prompt=(
+#         "你是一个订单服务助手。"
+#         "根据用户请求选择必要的工具。"
+#         "查询订单金额或状态时使用 get_order。"
+#         "查询物流时使用 get_logistics。"
+#         "查询退款时使用 get_refund_status。"
+#         "当用户同时询问订单状态和物流信息时，"
+#         "必须分别获取订单信息和物流信息。"
+#         "只能根据工具实际返回的结果回答，"
+#         "不得编造订单或物流信息。"
+#         "不要调用与用户请求无关的工具。"
+#     ),
+# )
+
+# 串行调用工具
+# agent = create_agent(
+#     model=model,
+#     tools=[
+#         get_order,
+#         get_logistics,
+#         get_refund_status,
+#         get_latest_order,
+#     ],
+#     system_prompt=(
+#         "你是一个订单服务助手。"
+#         "查询用户最近一笔订单时，必须先调用 get_latest_order。"
+#         "查询物流时，必须调用 get_logistics。"
+#         "如果用户询问最近一笔订单的物流，"
+#         "必须先获取最近订单的 order_id，"
+#         "再使用该 order_id 查询物流。"
+#         "不得自行猜测订单号，不得编造工具结果。"
+#         "不要调用与用户请求无关的工具。"
+#     ),
+# )
+
+# 测试工具异常处理
 agent = create_agent(
     model=model,
-    tools=[get_order,
+    tools=[
+        get_latest_order_for_test,
         get_logistics,
-        get_refund_status,
-           ],
+    ],
     system_prompt=(
         "你是一个订单服务助手。"
-        "根据用户请求选择必要的工具。"
-        "查询订单金额或状态时使用 get_order。"
-        "查询物流时使用 get_logistics。"
-        "查询退款时使用 get_refund_status。"
-        "当用户同时询问订单状态和物流信息时，"
-        "必须分别获取订单信息和物流信息。"
-        "只能根据工具实际返回的结果回答，"
-        "不得编造订单或物流信息。"
-        "不要调用与用户请求无关的工具。"
+        "查询最近订单时，先调用 get_latest_order_for_test。"
+        "只有成功获取有效 order_id 后，才能调用 get_logistics。"
+        "如果查询结果包含 error，必须停止后续物流查询，"
+        "如实告知用户查询失败。"
+        "不得猜测订单号，不得编造工具返回结果。"
     ),
 )
 
 
+
 # 6. 调用 Agent
+
+
+# question = "请查询 USER001 的订单 ORDER001 的状态，并告诉我物流到哪里了。"
+question = "请查询 USER999 最近一笔订单的物流到哪里了。"
+
 result = agent.invoke({
     "messages": [
         {
             "role": "user",
-            "content": "请查询 USER001 的订单 ORDER001 的状态，并告诉我物流到哪里了。",
+            "content": question,
         }
     ]
 })
-
-
 # 7. 查看最终回答
 # for message in result["messages"]:
 #     # if message.type == "ai":
